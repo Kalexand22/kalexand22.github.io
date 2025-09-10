@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Masses corporelles</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml;utf8,
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'>
+      <rect width='128' height='128' rx='24' fill='%230ea5e9'/>
+      <text x='50%' y='56%' dominant-baseline='middle' text-anchor='middle'
+            font-size='56' font-family='system-ui' fill='white'>%</text>
+    </svg>">
+  <style>
+    :root{--c:#0ea5e9;--bg:#0b1220;--card:#0f172a;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b;}
+    html,body{height:100%}
+    body{margin:0;background:#0b1220;color:#e5e7eb;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .wrap{max-width:760px;margin:0 auto;padding:24px}
+    .card{background:var(--card);border:1px solid #1e293b;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{margin:0 0 12px;font-size:24px}
+    .muted{color:var(--muted);font-size:14px;margin-top:-6px}
+    .grid{display:grid;gap:12px}
+    @media(min-width:680px){.grid{grid-template-columns:1fr 1fr}}
+    label{display:flex;gap:8px;flex-direction:column;font-weight:600}
+    input{appearance:none;border:1px solid #233044;background:#0b1220;color:#e5e7eb;
+          padding:12px 14px;border-radius:12px;font-size:16px;outline:none}
+    input:focus{border-color:var(--c);box-shadow:0 0 0 3px rgba(14,165,233,.25)}
+    .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
+    .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    button{border:0;background:var(--c);color:#001f2a;font-weight:700;padding:12px 14px;border-radius:12px;cursor:pointer}
+    button.secondary{background:#111827;color:#e5e7eb;border:1px solid #1f2937}
+    .out{margin-top:16px;border-top:1px dashed #223048;padding-top:16px}
+    .out .kpi{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 12px;border-radius:12px;background:#0b1220;border:1px solid #223048}
+    .ok{color:var(--ok)} .warn{color:var(--warn)}
+    .tiny{font-size:12px;color:var(--muted)}
+    .right{justify-self:end}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Masses corporelles</h1>
+      <p class="muted">Entre ton poids (kg) et tes pourcentages. Calculs instantanés, offline.</p>
+
+      <div class="grid" id="form">
+        <label>Poids (kg)
+          <input id="poids" type="number" inputmode="decimal" step="0.1" min="0" placeholder="ex: 78.4">
+        </label>
+        <label>% Masse grasse (BF)
+          <input id="pctGrasse" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="ex: 19.5">
+        </label>
+        <label>% Muscles (SMM)
+          <input id="pctMuscle" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="ex: 39.8">
+        </label>
+        <label>% Eau (TBW)
+          <input id="pctEau" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="ex: 55.2">
+        </label>
+        <label>% Graisse viscérale
+          <input id="pctVisc" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="ex: 7.5">
+        </label>
+      </div>
+
+      <div class="btns">
+        <button id="reset" class="secondary">Réinitialiser</button>
+        <button id="install" style="display:none">Installer</button>
+      </div>
+
+      <div class="out">
+        <div class="kpi"><div>Poids <strong>graisse</strong></div><div class="right" id="kgGrasse">—</div></div>
+        <div class="kpi"><div>Poids <strong>muscle</strong></div><div class="right" id="kgMuscle">—</div></div>
+        <div class="kpi"><div>Poids <strong>eau</strong></div><div class="right" id="kgEau">—</div></div>
+        <div class="kpi"><div>Poids <strong>graisse viscérale</strong></div><div class="right" id="kgVisc">—</div></div>
+        <div class="tiny" id="note"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id)=>document.getElementById(id);
+    const fields = ["poids","pctGrasse","pctMuscle","pctEau","pctVisc"].map($);
+
+    // Restaure l'état
+    try{
+      const saved = JSON.parse(localStorage.getItem("state-masses")||"{}");
+      for(const f of fields){ if(saved[f.id]!=null) f.value = saved[f.id]; }
+    }catch{}
+
+    const fmt = (n)=> isFinite(n) ? n.toFixed(2)+" kg" : "—";
+    function valOf(inp){ const v=parseFloat(inp.value.replace(",", ".")); return isFinite(v)?v:NaN; }
+
+    function compute(){
+      const poids = valOf($("poids"));
+      const pG = valOf($("pctGrasse"));
+      const pM = valOf($("pctMuscle"));
+      const pE = valOf($("pctEau"));
+      const pV = valOf($("pctVisc"));
+
+      // Sauvegarde
+      const state={}; fields.forEach(f=>state[f.id]=f.value); localStorage.setItem("state-masses", JSON.stringify(state));
+
+      if(!(poids>0)){ ["kgGrasse","kgMuscle","kgEau","kgVisc"].forEach(id=>$(id).textContent="—"); $("note").textContent=""; return; }
+
+      const kgGrasse = poids * (isFinite(pG)? pG/100 : 0);
+      const kgMuscle = poids * (isFinite(pM)? pM/100 : 0);
+      const kgEau    = poids * (isFinite(pE)? pE/100 : 0);
+      const kgVisc   = poids * (isFinite(pV)? pV/100 : 0);
+
+      $("kgGrasse").textContent = fmt(kgGrasse);
+      $("kgMuscle").textContent = fmt(kgMuscle);
+      $("kgEau").textContent    = fmt(kgEau);
+      $("kgVisc").textContent   = fmt(kgVisc);
+
+      // Avertissements basiques
+      let msg = [];
+      for(const [label, p] of [["% grasse",pG],["% muscle",pM],["% eau",pE],["% graisse visc.",pV]]){
+        if(isFinite(p) && (p<0 || p>100)) msg.push(`${label} doit être entre 0 et 100`);
+      }
+      if(isFinite(pG) && isFinite(pV) && pV > pG) msg.push("% graisse viscérale > % masse grasse : vérifier la saisie");
+
+      // NB : muscles/eau/graisse peuvent se recouper selon l’appareil — pas de somme imposée à 100.
+      $("note").innerHTML = msg.length ? `<span class="warn">⚠︎ ${msg.join(" • ")}</span>` : "";
+    }
+
+    fields.forEach(f=>f.addEventListener("input", compute));
+    $("reset").addEventListener("click", ()=>{ fields.forEach(f=>f.value=""); localStorage.removeItem("state-masses"); compute(); });
+
+    // PWA install prompt
+    let deferredPrompt=null;
+    window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; $("install").style.display='inline-block';});
+    $("install").addEventListener("click", async ()=>{
+      if(!deferredPrompt) return;
+      deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; $("install").style.display='none';
+    });
+
+    // SW
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
+
+    compute();
+  </script>
+</body>
+</html>
