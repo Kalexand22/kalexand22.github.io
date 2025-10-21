@@ -90,11 +90,12 @@
 
     <div class="card chart-section" id="chartSection" style="display:none">
       <div class="chart-controls">
-        <h2 style="margin:0;font-size:20px;flex:1">📊 Évolution</h2>
-        <button class="toggle-btn active" id="togglePercent">Pourcentages (%)</button>
-        <button class="toggle-btn" id="toggleAbsolute">Masses (kg)</button>
+        <h2 style="margin:0;font-size:20px;flex:1">📊 Variations par rapport à la 1ère mesure</h2>
+        <button class="toggle-btn active" id="togglePercent">Δ Pourcentages</button>
+        <button class="toggle-btn" id="toggleAbsolute">Δ Masses (kg)</button>
       </div>
       <canvas id="chart"></canvas>
+      <div class="tiny" style="margin-top:8px;text-align:center;color:var(--muted)" id="refNote"></div>
 
       <div class="history-list">
         <h3 style="font-size:16px;margin:16px 0 12px">Historique des mesures</h3>
@@ -231,77 +232,109 @@
 
       const labels = history.map(m => m.date);
 
+      // Valeurs de référence (première mesure)
+      const ref = history[0];
+
+      // Afficher la note de référence
+      const refParts = [];
+      if(ref.poids) refParts.push(`${ref.poids.toFixed(1)} kg`);
+      if(ref.pctGrasse!=null) refParts.push(`G:${ref.pctGrasse.toFixed(1)}%`);
+      if(ref.pctMuscle!=null) refParts.push(`M:${ref.pctMuscle.toFixed(1)}%`);
+      if(ref.pctEau!=null) refParts.push(`E:${ref.pctEau.toFixed(1)}%`);
+      $("refNote").textContent = `Référence (${ref.date}): ${refParts.join(' • ')}`;
+
       const datasets = showPercent ? [
         {
-          label: '% Masse grasse',
-          data: history.map(m => m.pctGrasse),
+          label: 'Δ % Masse grasse',
+          data: history.map(m => m.pctGrasse!=null && ref.pctGrasse!=null ? m.pctGrasse - ref.pctGrasse : null),
           borderColor: '#f59e0b',
           backgroundColor: 'rgba(245, 158, 11, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: '% Muscles',
-          data: history.map(m => m.pctMuscle),
+          label: 'Δ % Muscles',
+          data: history.map(m => m.pctMuscle!=null && ref.pctMuscle!=null ? m.pctMuscle - ref.pctMuscle : null),
           borderColor: '#10b981',
           backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: '% Eau',
-          data: history.map(m => m.pctEau),
+          label: 'Δ % Eau',
+          data: history.map(m => m.pctEau!=null && ref.pctEau!=null ? m.pctEau - ref.pctEau : null),
           borderColor: '#0ea5e9',
           backgroundColor: 'rgba(14, 165, 233, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: '% Graisse viscérale',
-          data: history.map(m => m.pctVisc),
+          label: 'Δ % Graisse viscérale',
+          data: history.map(m => m.pctVisc!=null && ref.pctVisc!=null ? m.pctVisc - ref.pctVisc : null),
           borderColor: '#ef4444',
           backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         }
       ] : [
         {
-          label: 'Poids total (kg)',
-          data: history.map(m => m.poids),
+          label: 'Δ Poids total',
+          data: history.map(m => m.poids && ref.poids ? m.poids - ref.poids : null),
           borderColor: '#94a3b8',
           backgroundColor: 'rgba(148, 163, 184, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 3
         },
         {
-          label: 'Masse grasse (kg)',
-          data: history.map(m => m.poids && m.pctGrasse!=null ? m.poids * m.pctGrasse/100 : null),
+          label: 'Δ Masse grasse',
+          data: history.map(m => {
+            if(!m.poids || !m.pctGrasse || !ref.poids || !ref.pctGrasse) return null;
+            return (m.poids * m.pctGrasse/100) - (ref.poids * ref.pctGrasse/100);
+          }),
           borderColor: '#f59e0b',
           backgroundColor: 'rgba(245, 158, 11, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: 'Muscles (kg)',
-          data: history.map(m => m.poids && m.pctMuscle!=null ? m.poids * m.pctMuscle/100 : null),
+          label: 'Δ Muscles',
+          data: history.map(m => {
+            if(!m.poids || !m.pctMuscle || !ref.poids || !ref.pctMuscle) return null;
+            return (m.poids * m.pctMuscle/100) - (ref.poids * ref.pctMuscle/100);
+          }),
           borderColor: '#10b981',
           backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: 'Eau (kg)',
-          data: history.map(m => m.poids && m.pctEau!=null ? m.poids * m.pctEau/100 : null),
+          label: 'Δ Eau',
+          data: history.map(m => {
+            if(!m.poids || !m.pctEau || !ref.poids || !ref.pctEau) return null;
+            return (m.poids * m.pctEau/100) - (ref.poids * ref.pctEau/100);
+          }),
           borderColor: '#0ea5e9',
           backgroundColor: 'rgba(14, 165, 233, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         },
         {
-          label: 'Graisse viscérale (kg)',
-          data: history.map(m => m.poids && m.pctVisc!=null ? m.poids * m.pctVisc/100 : null),
+          label: 'Δ Graisse viscérale',
+          data: history.map(m => {
+            if(!m.poids || !m.pctVisc || !ref.poids || !ref.pctVisc) return null;
+            return (m.poids * m.pctVisc/100) - (ref.poids * ref.pctVisc/100);
+          }),
           borderColor: '#ef4444',
           backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          tension: 0.3
+          tension: 0.3,
+          borderWidth: 2
         }
       ];
 
       if(chart){
         chart.data.labels = labels;
         chart.data.datasets = datasets;
-        chart.options.scales.y.title.text = showPercent ? 'Pourcentage (%)' : 'Masse (kg)';
+        chart.options.scales.y.title.text = showPercent ? 'Variation (points de %)' : 'Variation (kg)';
         chart.update();
       } else {
         const ctx = $("chart").getContext("2d");
@@ -314,7 +347,19 @@
             plugins: {
               legend: {
                 display: true,
-                labels: { color: '#e5e7eb' }
+                labels: { color: '#e5e7eb', font: { size: 11 } }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const label = context.dataset.label || '';
+                    const value = context.parsed.y;
+                    if (value === null) return label + ': —';
+                    const sign = value >= 0 ? '+' : '';
+                    const unit = showPercent ? ' pts' : ' kg';
+                    return label + ': ' + sign + value.toFixed(2) + unit;
+                  }
+                }
               }
             },
             scales: {
@@ -323,11 +368,23 @@
                 grid: { color: '#1e293b' }
               },
               y: {
-                ticks: { color: '#94a3b8' },
-                grid: { color: '#1e293b' },
+                ticks: {
+                  color: '#94a3b8',
+                  callback: function(value) {
+                    return (value >= 0 ? '+' : '') + value.toFixed(1);
+                  }
+                },
+                grid: {
+                  color: function(context) {
+                    return context.tick.value === 0 ? '#475569' : '#1e293b';
+                  },
+                  lineWidth: function(context) {
+                    return context.tick.value === 0 ? 2 : 1;
+                  }
+                },
                 title: {
                   display: true,
-                  text: showPercent ? 'Pourcentage (%)' : 'Masse (kg)',
+                  text: showPercent ? 'Variation (points de %)' : 'Variation (kg)',
                   color: '#e5e7eb'
                 }
               }
