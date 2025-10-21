@@ -6,6 +6,7 @@
   <title>Masses corporelles</title>
   <meta name="theme-color" content="#0ea5e9" />
   <link rel="manifest" href="manifest.webmanifest" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="icon" href="data:image/svg+xml;utf8,
     <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'>
       <rect width='128' height='128' rx='24' fill='%230ea5e9'/>
@@ -35,6 +36,17 @@
     .ok{color:var(--ok)} .warn{color:var(--warn)}
     .tiny{font-size:12px;color:var(--muted)}
     .right{justify-self:end}
+    .chart-section{margin-top:24px;border-top:2px solid #1e293b;padding-top:24px}
+    .chart-controls{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .toggle-btn{border:1px solid var(--c);background:transparent;color:var(--c);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px}
+    .toggle-btn.active{background:var(--c);color:#001f2a}
+    canvas{max-height:400px}
+    .history-list{margin-top:16px;max-height:300px;overflow-y:auto}
+    .history-item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:10px 12px;border-radius:8px;background:#0b1220;border:1px solid #223048;margin-bottom:8px;align-items:center}
+    .history-date{font-weight:600;color:var(--c)}
+    .history-data{font-size:13px;color:var(--muted)}
+    .del-btn{background:#7f1d1d;color:#fca5a5;padding:6px 12px;font-size:12px;border-radius:6px;cursor:pointer;border:none}
+    .del-btn:hover{background:#991b1b}
   </style>
 </head>
 <body>
@@ -62,6 +74,7 @@
       </div>
 
       <div class="btns">
+        <button id="save">💾 Sauvegarder cette mesure</button>
         <button id="reset" class="secondary">Réinitialiser</button>
         <button id="install" style="display:none">Installer</button>
       </div>
@@ -74,16 +87,38 @@
         <div class="tiny" id="note"></div>
       </div>
     </div>
+
+    <div class="card chart-section" id="chartSection" style="display:none">
+      <div class="chart-controls">
+        <h2 style="margin:0;font-size:20px;flex:1">📊 Évolution</h2>
+        <button class="toggle-btn active" id="togglePercent">Pourcentages (%)</button>
+        <button class="toggle-btn" id="toggleAbsolute">Masses (kg)</button>
+      </div>
+      <canvas id="chart"></canvas>
+
+      <div class="history-list">
+        <h3 style="font-size:16px;margin:16px 0 12px">Historique des mesures</h3>
+        <div id="historyItems"></div>
+      </div>
+    </div>
   </div>
 
   <script>
     const $ = (id)=>document.getElementById(id);
     const fields = ["poids","pctGrasse","pctMuscle","pctEau","pctVisc"].map($);
 
-    // Restaure l'état
+    let history = [];
+    let chart = null;
+    let showPercent = true;
+
+    // Restaure l'état et l'historique
     try{
       const saved = JSON.parse(localStorage.getItem("state-masses")||"{}");
       for(const f of fields){ if(saved[f.id]!=null) f.value = saved[f.id]; }
+    }catch{}
+
+    try{
+      history = JSON.parse(localStorage.getItem("history-masses")||"[]");
     }catch{}
 
     const fmt = (n)=> isFinite(n) ? n.toFixed(2)+" kg" : "—";
@@ -96,7 +131,7 @@
       const pE = valOf($("pctEau"));
       const pV = valOf($("pctVisc"));
 
-      // Sauvegarde
+      // Sauvegarde état actuel
       const state={}; fields.forEach(f=>state[f.id]=f.value); localStorage.setItem("state-masses", JSON.stringify(state));
 
       if(!(poids>0)){ ["kgGrasse","kgMuscle","kgEau","kgVisc"].forEach(id=>$(id).textContent="—"); $("note").textContent=""; return; }
@@ -118,12 +153,208 @@
       }
       if(isFinite(pG) && isFinite(pV) && pV > pG) msg.push("% graisse viscérale > % masse grasse : vérifier la saisie");
 
-      // NB : muscles/eau/graisse peuvent se recouper selon l’appareil — pas de somme imposée à 100.
       $("note").innerHTML = msg.length ? `<span class="warn">⚠︎ ${msg.join(" • ")}</span>` : "";
     }
 
+    // Sauvegarder une mesure dans l'historique
+    function saveMeasurement(){
+      const poids = valOf($("poids"));
+      const pG = valOf($("pctGrasse"));
+      const pM = valOf($("pctMuscle"));
+      const pE = valOf($("pctEau"));
+      const pV = valOf($("pctVisc"));
+
+      if(!(poids>0)){
+        alert("Veuillez entrer au moins un poids valide");
+        return;
+      }
+
+      const date = prompt("Date de la mesure (format: AAAA-MM-JJ)", new Date().toISOString().split('T')[0]);
+      if(!date) return;
+
+      const measurement = {
+        date,
+        poids,
+        pctGrasse: isFinite(pG) ? pG : null,
+        pctMuscle: isFinite(pM) ? pM : null,
+        pctEau: isFinite(pE) ? pE : null,
+        pctVisc: isFinite(pV) ? pV : null
+      };
+
+      history.push(measurement);
+      history.sort((a,b)=> new Date(a.date) - new Date(b.date));
+      localStorage.setItem("history-masses", JSON.stringify(history));
+
+      renderHistory();
+      updateChart();
+      $("chartSection").style.display = "block";
+    }
+
+    // Supprimer une mesure
+    function deleteMeasurement(index){
+      if(confirm("Supprimer cette mesure ?")){
+        history.splice(index, 1);
+        localStorage.setItem("history-masses", JSON.stringify(history));
+        renderHistory();
+        updateChart();
+        if(history.length === 0) $("chartSection").style.display = "none";
+      }
+    }
+
+    // Afficher l'historique
+    function renderHistory(){
+      const container = $("historyItems");
+      if(history.length === 0){
+        container.innerHTML = '<p class="tiny">Aucune mesure sauvegardée</p>';
+        return;
+      }
+
+      container.innerHTML = history.map((m, i) => {
+        const parts = [];
+        if(m.poids) parts.push(`${m.poids.toFixed(1)} kg`);
+        if(m.pctGrasse!=null) parts.push(`G:${m.pctGrasse.toFixed(1)}%`);
+        if(m.pctMuscle!=null) parts.push(`M:${m.pctMuscle.toFixed(1)}%`);
+        if(m.pctEau!=null) parts.push(`E:${m.pctEau.toFixed(1)}%`);
+        if(m.pctVisc!=null) parts.push(`V:${m.pctVisc.toFixed(1)}%`);
+
+        return `<div class="history-item">
+          <div class="history-date">${m.date}</div>
+          <div class="history-data">${parts.join(' • ')}</div>
+          <button class="del-btn" onclick="deleteMeasurement(${i})">✕</button>
+        </div>`;
+      }).join('');
+    }
+
+    // Créer/mettre à jour le graphique
+    function updateChart(){
+      if(history.length === 0) return;
+
+      const labels = history.map(m => m.date);
+
+      const datasets = showPercent ? [
+        {
+          label: '% Masse grasse',
+          data: history.map(m => m.pctGrasse),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: '% Muscles',
+          data: history.map(m => m.pctMuscle),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: '% Eau',
+          data: history.map(m => m.pctEau),
+          borderColor: '#0ea5e9',
+          backgroundColor: 'rgba(14, 165, 233, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: '% Graisse viscérale',
+          data: history.map(m => m.pctVisc),
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          tension: 0.3
+        }
+      ] : [
+        {
+          label: 'Poids total (kg)',
+          data: history.map(m => m.poids),
+          borderColor: '#94a3b8',
+          backgroundColor: 'rgba(148, 163, 184, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: 'Masse grasse (kg)',
+          data: history.map(m => m.poids && m.pctGrasse!=null ? m.poids * m.pctGrasse/100 : null),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: 'Muscles (kg)',
+          data: history.map(m => m.poids && m.pctMuscle!=null ? m.poids * m.pctMuscle/100 : null),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: 'Eau (kg)',
+          data: history.map(m => m.poids && m.pctEau!=null ? m.poids * m.pctEau/100 : null),
+          borderColor: '#0ea5e9',
+          backgroundColor: 'rgba(14, 165, 233, 0.1)',
+          tension: 0.3
+        },
+        {
+          label: 'Graisse viscérale (kg)',
+          data: history.map(m => m.poids && m.pctVisc!=null ? m.poids * m.pctVisc/100 : null),
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          tension: 0.3
+        }
+      ];
+
+      if(chart){
+        chart.data.labels = labels;
+        chart.data.datasets = datasets;
+        chart.options.scales.y.title.text = showPercent ? 'Pourcentage (%)' : 'Masse (kg)';
+        chart.update();
+      } else {
+        const ctx = $("chart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: true,
+                labels: { color: '#e5e7eb' }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#1e293b' }
+              },
+              y: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#1e293b' },
+                title: {
+                  display: true,
+                  text: showPercent ? 'Pourcentage (%)' : 'Masse (kg)',
+                  color: '#e5e7eb'
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // Toggle percent/absolute
+    function toggleView(percent){
+      showPercent = percent;
+      $("togglePercent").classList.toggle("active", percent);
+      $("toggleAbsolute").classList.toggle("active", !percent);
+      updateChart();
+    }
+
+    // Event listeners
     fields.forEach(f=>f.addEventListener("input", compute));
-    $("reset").addEventListener("click", ()=>{ fields.forEach(f=>f.value=""); localStorage.removeItem("state-masses"); compute(); });
+    $("reset").addEventListener("click", ()=>{
+      fields.forEach(f=>f.value="");
+      localStorage.removeItem("state-masses");
+      compute();
+    });
+    $("save").addEventListener("click", saveMeasurement);
+    $("togglePercent").addEventListener("click", ()=>toggleView(true));
+    $("toggleAbsolute").addEventListener("click", ()=>toggleView(false));
 
     // PWA install prompt
     let deferredPrompt=null;
@@ -136,7 +367,13 @@
     // SW
     if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
+    // Init
     compute();
+    if(history.length > 0){
+      $("chartSection").style.display = "block";
+      renderHistory();
+      updateChart();
+    }
   </script>
 </body>
 </html>
