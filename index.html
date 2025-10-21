@@ -212,11 +212,24 @@
 
       container.innerHTML = history.map((m, i) => {
         const parts = [];
-        if(m.poids) parts.push(`${m.poids.toFixed(1)} kg`);
-        if(m.pctGrasse!=null) parts.push(`G:${m.pctGrasse.toFixed(1)}%`);
-        if(m.pctMuscle!=null) parts.push(`M:${m.pctMuscle.toFixed(1)}%`);
-        if(m.pctEau!=null) parts.push(`E:${m.pctEau.toFixed(1)}%`);
-        if(m.pctVisc!=null) parts.push(`V:${m.pctVisc.toFixed(1)}%`);
+        if(m.poids) parts.push(`<strong>${m.poids.toFixed(1)} kg</strong>`);
+
+        if(m.poids && m.pctGrasse!=null) {
+          const kg = (m.poids * m.pctGrasse / 100).toFixed(1);
+          parts.push(`G:${m.pctGrasse.toFixed(1)}% (${kg}kg)`);
+        }
+        if(m.poids && m.pctMuscle!=null) {
+          const kg = (m.poids * m.pctMuscle / 100).toFixed(1);
+          parts.push(`M:${m.pctMuscle.toFixed(1)}% (${kg}kg)`);
+        }
+        if(m.poids && m.pctEau!=null) {
+          const kg = (m.poids * m.pctEau / 100).toFixed(1);
+          parts.push(`E:${m.pctEau.toFixed(1)}% (${kg}kg)`);
+        }
+        if(m.poids && m.pctVisc!=null) {
+          const kg = (m.poids * m.pctVisc / 100).toFixed(1);
+          parts.push(`V:${m.pctVisc.toFixed(1)}% (${kg}kg)`);
+        }
 
         return `<div class="history-item">
           <div class="history-date">${m.date}</div>
